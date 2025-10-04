@@ -1,0 +1,6 @@
+/backend/deepfake_model/__pycache__/**
+/backend/deepfake_model/.venv/**
+/backend/deepfake_model/data/**
+/backend/deepfake_model/outputs/**
+/backend/deepfake_model/checkpoints/**
+*.mp4 *.mov *.avi
