@@ -1,0 +1,5 @@
+/backend/__pycache__/**
+/backend/out/**
+/backend/real_data/**
+/backend/test_data/**
+/backend/last_run.log
