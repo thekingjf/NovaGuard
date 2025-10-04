@@ -1,3 +1,4 @@
+# deepfake_model_main.py  (only the key parts shown; replace your file if easier)
 import argparse, glob, json, os, torch, csv
 from deepfake_env import set_seed
 from deepfake_timm import DeepfakeModel
@@ -11,27 +12,66 @@ def load_cfg(path):
 
 def score_video(video_path, cfg):
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
-    set_seed(1337)
-    # 1) model
-    model = DeepfakeModel(cfg['model']['arch'], cfg['model']['num_classes'], cfg['model']['ckpt_path'])
+
+    mcfg = cfg['model']
+    model = DeepfakeModel(
+        mcfg['arch'],
+        num_classes=mcfg.get('num_classes', 2),
+        ckpt_path=mcfg.get('ckpt_path', None),
+        fake_index=mcfg.get('fake_index', 1),
+    )
     model.set_temperature(cfg['calibration'].get('temperature', 1.0))
-    # 2) sampling
-    sampler = FaceSampler(fps=cfg['data']['fps'], input_size=cfg['model']['input_size'],
-                          margin=cfg['data']['face_margin'], min_face=cfg['data']['min_face'],
-                          align_eyes=cfg['data']['align_eyes'], device=device)
-    crops, meta = sampler.sample(video_path, max_frames=cfg['data']['max_frames'])
-    # 3) inference
-    logits = run_inference(model, crops, batch_size=cfg['inference']['batch_size'],
-                           half=cfg['inference']['half'], device=device)
-    # 4) aggregate
-    if len(logits)==0:
-        return {'video': os.path.basename(video_path), 'score': float('nan'), 'ci': [float('nan'), float('nan')], 'frames': 0}
-    fake_logits = logits[:,1] - logits[:,0]
-    score, logit = aggregate_logits(logits)
-    lo, hi = bootstrap_ci(fake_logits, B=300)
-    return {'video': os.path.basename(video_path), 'score': score, 'ci': [lo, hi], 'frames': int(len(crops)),
-            'temp': float(model.temperature), 'logit_mean': float(logit),
-            'face_frames_pct': float(100*sum(m['face'] for m in meta)/max(1,len(meta)))}
+
+    # sample crops
+    scfg = cfg['data']
+    sampler = FaceSampler(
+        fps=scfg['fps'],
+        input_size=mcfg['input_size'],
+        margin=scfg['face_margin'],
+        min_face=scfg['min_face'],
+        align_eyes=scfg['align_eyes'],
+        device=device
+    )
+    crops, meta = sampler.sample(video_path, max_frames=scfg['max_frames'])
+
+    # inference with config mean/std
+    icfg = cfg['inference']
+    logits = run_inference(
+        model, crops,
+        mean=mcfg['mean'], std=mcfg['std'],
+        batch_size=icfg['batch_size'], half=icfg['half'], device=device
+    )
+
+    if len(logits) == 0:
+        return {"video": os.path.basename(video_path), "path": video_path, "score": None, "ci": [None, None], "frames": 0}
+
+    # aggregate respecting head_type + fake_index
+    head_type = getattr(model, "head_type", "2c")
+    p, logit = aggregate_logits(
+        logits,
+        head_type=head_type,
+        fake_index=mcfg.get('fake_index', 1),
+        temperature=float(model.temperature)
+    )
+
+    # CI on per-frame fake_log
+    if head_type == "1c":
+        fake_log = logits.view(-1)
+    else:
+        fi = int(mcfg.get('fake_index', 1)); other = 1 - fi
+        fake_log = logits[:, fi] - logits[:, other]
+    lo, hi = bootstrap_ci(fake_log, B=300)
+
+    return {
+        "video": os.path.basename(video_path),
+        "path": video_path,
+        "score": float(p),
+        "ci": [float(lo), float(hi)],
+        "frames": int(len(crops)),
+        "temp": float(model.temperature),
+        "logit_mean": float(logit),
+        "face_frames_pct": float(100*sum(m['face'] for m in meta)/max(1,len(meta))),
+    }
 
 def iter_videos_from_dir(d, patterns=("*.mp4","*.mov","*.avi")):
     for pat in patterns:
@@ -46,44 +86,47 @@ def iter_videos_from_manifest(mpath):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--video", help="single video path")
-    ap.add_argument("--dir", help="directory of videos (recurses)")
-    ap.add_argument("--manifest", help="CSV with columns path,label,split")
+    ap.add_argument("--video")
+    ap.add_argument("--dir")
+    ap.add_argument("--manifest")
     ap.add_argument("--config", default="config.yaml")
-    ap.add_argument("--out", help="JSONL path for results")
+    ap.add_argument("--out")
     args = ap.parse_args()
 
     cfg = load_cfg(args.config)
-    save_dir = args.out or os.path.join(cfg["io"]["save_dir"], "scores.jsonl")
-    os.makedirs(os.path.dirname(save_dir), exist_ok=True)
+    out_path = args.out or os.path.join(cfg["io"]["save_dir"], "scores.jsonl")
+    os.makedirs(os.path.dirname(out_path), exist_ok=True)
 
-    def write(json_obj, fp):
-        fp.write(json.dumps(json_obj) + "\n")
-        fp.flush()
+    def write(fp, obj):
+        fp.write(json.dumps(obj) + "\n"); fp.flush()
 
-    with open(save_dir, "w") as fp:
+    with open(out_path, "w") as fp:
         if args.video:
-            res = score_video(args.video, cfg)
-            write(res, fp)
+            try:
+                write(fp, score_video(args.video, cfg))
+            except Exception as e:
+                write(fp, {"video": os.path.basename(args.video), "path": args.video, "error": str(e), "score": None})
         elif args.dir:
             for p in iter_videos_from_dir(args.dir):
-                res = score_video(p, cfg)
-                write(res, fp)
+                try:
+                    write(fp, score_video(p, cfg))
+                except Exception as e:
+                    write(fp, {"video": os.path.basename(p), "path": p, "error": str(e), "score": None})
         elif args.manifest:
             for p, lbl, split in iter_videos_from_manifest(args.manifest):
-                res = score_video(p, cfg)
-                res.update({"label": lbl, "split": split})
-                write(res, fp)
-        else:
-            # fallbacks to config defaults if nothing passed
-            for p in iter_videos_from_dir(cfg["io"]["input_glob"].rsplit("/**",1)[0]):
                 try:
                     res = score_video(p, cfg)
+                    res.update({"label": lbl, "split": split})
                 except Exception as e:
-                    res = {"video": os.path.basename(p), "path": p, "error": str(e), "score": None}
-                write(res, fp)
-                write(res, fp)
-    print(f"Wrote results to {save_dir}")
+                    res = {"video": os.path.basename(p), "path": p, "label": lbl, "split": split, "error": str(e), "score": None}
+                write(fp, res)
+        else:
+            for p in iter_videos_from_dir(cfg["io"]["input_glob"].rsplit("/**",1)[0]):
+                try:
+                    write(fp, score_video(p, cfg))
+                except Exception as e:
+                    write(fp, {"video": os.path.basename(p), "path": p, "error": str(e), "score": None})
+    print(f"Wrote results to {out_path}")
 
 if __name__ == "__main__":
     main()

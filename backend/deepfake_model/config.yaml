@@ -1,29 +1,25 @@
 # config.yaml
 model:
-  arch: tf_efficientnet_b0_ns           # example with timm; or 'xception'
+  arch: xception_ffpp
   num_classes: 2
-  ckpt_path: checkpoints/dfdc_efficientnet_b0.pth
-  input_size: 224
-  mean: [0.485, 0.456, 0.406]           # match your training recipe
-  std:  [0.229, 0.224, 0.225]
-  fake_class_index: 1     
+  ckpt_path: checkpoints/xception_ffpp_c23.pth
+  fake_index: 1           # assume index 1 corresponds to "fake"
+  input_size: 299
+  mean: [0.5, 0.5, 0.5]
+  std:  [0.5, 0.5, 0.5]
 data:
-  fps: 8                                 # target 6–8 fps is good
-  max_frames: 256                        # safety cap per video
-  face_detector: mtcnn                   # or retinaface
-  face_margin: 0.25                      # 25% extra around bbox
-  min_face: 80                           # skip tiny faces
+  fps: 8
+  max_frames: 256
+  face_detector: mtcnn
+  face_margin: 0.25
+  min_face: 80
   align_eyes: true
 inference:
   batch_size: 64
-  half: true                             # fp16 if supported
-  num_workers: 4
-aggregation:
-  per_frame: logit_mean                  # fuse multiple faces per frame
-  per_video: logit_mean                  # fuse frames
+  half: true
 calibration:
-  temperature: 1.0                       # set after val fitting
-  threshold: 0.5                         # set after val analysis
+  temperature: 1.0
+  threshold: 0.5                 # set after val analysis
 io:
   save_dir: outputs/probe_2025-10-04
   input_glob: data/videos/**/*.mp4   # used if --dir is given

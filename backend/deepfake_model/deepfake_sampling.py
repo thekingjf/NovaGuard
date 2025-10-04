@@ -61,17 +61,19 @@ class FaceSampler:
         for i, img in enumerate(frames):
             boxes, probs, landmarks = self.detector.detect(img, landmarks=True)
             if boxes is not None and len(boxes) > 0:
-                j = self._choose_face(boxes)
-                box = boxes[j]
-                if (box[2]-box[0]) >= self.min_face and (box[3]-box[1]) >= self.min_face:
-                    crop = self._crop_expand(img, box)
-                    if self.align_eyes and landmarks is not None and landmarks[j] is not None:
-                        left_eye, right_eye = landmarks[j][0], landmarks[j][1]
-                        crop = self._align(crop, (left_eye, right_eye))
-                    crop = cv2.resize(crop, (self.size, self.size), interpolation=cv2.INTER_LINEAR)
-                    crops.append(crop)
-                    meta.append({'frame_idx': i, 'face': True})
-                    continue
+                keep = [i for i,(b,p) in enumerate(zip(boxes, probs)) if (p is None or p >= 0.90)]
+                if keep:
+                    j = self._choose_face(boxes)
+                    box = boxes[j]
+                    if (box[2]-box[0]) >= self.min_face and (box[3]-box[1]) >= self.min_face:
+                        crop = self._crop_expand(img, box)
+                        if self.align_eyes and landmarks is not None and landmarks[j] is not None:
+                            left_eye, right_eye = landmarks[j][0], landmarks[j][1]
+                            crop = self._align(crop, (left_eye, right_eye))
+                        crop = cv2.resize(crop, (self.size, self.size), interpolation=cv2.INTER_LINEAR)
+                        crops.append(crop)
+                        meta.append({'frame_idx': i, 'face': True})
+                        continue
             # fallback: center crop when no face
             h,w = img.shape[:2]
             m = min(h,w); y0, x0 = (h-m)//2, (w-m)//2
