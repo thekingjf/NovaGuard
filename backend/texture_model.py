@@ -1,90 +1,133 @@
+# backend/texture_model.py
 import cv2, numpy as np
-from scaler_values import scaler
+from scaler_values import scaler  # loads mean/std from cache
 
-# optional guard so missing mediapipe doesn't break import
+# Try to use learned weights; fall back to simple ones
 try:
-    import mediapipe as mp
-    mp_face = mp.solutions.face_mesh
-    mp_det  = mp.solutions.face_detection
+    from weights import W, B
 except Exception:
-    mp = mp_face = mp_det = None
+    W = np.array([0.4, 0.4, 0.2, 0.0, 0.0], dtype=np.float32)  # if only 3 features in cache, scaler will raise until you refit
+    B = 0.0
 
-# Defined funciton to take the laplacian (edge detection) where gray is an array and checks with a discrete laplacian 
-# how different a pixel is from its neighbors (weighted sum) and it returns that and the variance.   
+# -------- Tunables (quick knobs) --------
+FACE_SIZE      = 256
+ROI_LOWER_FRAC = 0.55   # lower fraction for mouth/cheek ROI
+LAPLACIAN_KS   = (3, 5) # multi-scale Laplacian
+FFT_DIVISOR    = 12     # high-pass cutoff radius = min(H,W)//divisor
+EDGE_TILE      = 8      # smaller = more sensitive to local jitter
+SOBEL_K        = 3
+CLAHE_CLIP     = 2.0
+CLAHE_TILE     = (8, 8)
+GAUSS_BLUR_K   = 3      # set to 0 to disable
+
+# -------- Helpers (must match dataset/scaler feature defs) --------
+def preprocess_gray(face_bgr):
+    yuv = cv2.cvtColor(face_bgr, cv2.COLOR_BGR2YUV)
+    Y = yuv[:, :, 0]
+    clahe = cv2.createCLAHE(clipLimit=CLAHE_CLIP, tileGridSize=CLAHE_TILE)
+    Y = clahe.apply(Y)
+    if GAUSS_BLUR_K and GAUSS_BLUR_K >= 3:
+        Y = cv2.GaussianBlur(Y, (GAUSS_BLUR_K, GAUSS_BLUR_K), 0)
+    return Y
+
 def compute_sharpness(gray):
-    lap = cv2.Laplacian(gray, cv2.CV_32F, ksize=3)
-    return lap.var(), lap
+    vars_ = [cv2.Laplacian(gray, cv2.CV_32F, ksize=k).var() for k in LAPLACIAN_KS]
+    lap_for_heat = cv2.Laplacian(gray, cv2.CV_32F, ksize=LAPLACIAN_KS[0])
+    return float(np.mean(vars_)), lap_for_heat
 
-# Takes image into freq. domain, centers, and squares magnitudes. The center holds low freq. 
-# so defines a small square and zeros it out leaving high frequencies powers then returns ratio power in high freq over power in all
-# frequncies. r picks square relative to image, and e8 prevents division by 0. Closer to 1 = more fine details/edges. Closer to 0 = 
-# image dominated by low frequencies/smooth content
 def compute_high_ratio(gray):
-    F = np.fft.fft2(gray); F = np.fft.fftshift(F); mag = np.abs(F)**2
-    r = min(gray.shape)//12
-    h = mag.copy()
-    H, W = mag.shape; cy, cx = H//2, W//2
-    h[cy-r:cy+r, cx-r:cx+r] = 0
-    return float(h.sum()/(mag.sum()+1e-8))
+    H, W = gray.shape
+    win = np.outer(np.hanning(H), np.hanning(W)).astype(np.float32)
+    F = np.fft.fftshift(np.fft.fft2(gray * win))
+    mag = (np.abs(F) ** 2).astype(np.float32)
+    cy, cx = H // 2, W // 2
+    r0 = max(2, min(H, W) // FFT_DIVISOR)
+    Y, X = np.ogrid[:H, :W]
+    mask_hi = (Y - cy) ** 2 + (X - cx) ** 2 >= (r0 * r0)
+    hi = float(mag[mask_hi].sum())
+    tot = float(mag.sum()) + 1e-8
+    return hi / tot
 
-# Makes edge-strength map to measure how "jittery" edges are to STD and returns "score" of how much those tiles j
-# itter compared to median tiles (after dividng into 16x16 tiles). Bigger score = messier region. Lower score = more uniform. 
-# AI tends to leave messy edges in its content. 
 def edge_glitch_score(gray_roi):
-    gx = cv2.Sobel(gray_roi, cv2.CV_32F, 1, 0, ksize=3)
-    gy = cv2.Sobel(gray_roi, cv2.CV_32F, 0, 1, ksize=3)
+    gx = cv2.Sobel(gray_roi, cv2.CV_32F, 1, 0, ksize=SOBEL_K)
+    gy = cv2.Sobel(gray_roi, cv2.CV_32F, 0, 1, ksize=SOBEL_K)
     G  = np.sqrt(gx*gx + gy*gy)
-    win, vals = 16, []
-    for y in range(0, G.shape[0]-win+1, win):
-        for x in range(0, G.shape[1]-win+1, win):
-            vals.append(G[y:y+win, x:x+win].std())
-    return float(np.percentile(vals, 95) - np.median(vals))
+    Gn = G / (G.mean() + 1e-8)  # normalize per-ROI
+    win, vals = EDGE_TILE, []
+    H, W = Gn.shape
+    for y in range(0, H - win + 1, win):
+        for x in range(0, W - win + 1, win):
+            vals.append(Gn[y:y+win, x:x+win].std())
+    if not vals:
+        return 0.0
+    vals = np.array(vals, np.float32)
+    return float(np.percentile(vals, 90) - np.median(vals))
 
-# This creates a heatmap that points out extraneous regions (over-sharp, noisy, artificed edges) with hotter colors and with 
-# cooler colors, smoother, more natural regions. 
+def block_boundary_energy(gray):
+    g = gray.astype(np.float32)
+    H, W = g.shape
+
+    # Vertical 8x8 boundaries: compare col k vs k+1 for k = 7,15,23,..., up to W-2
+    vb_left  = g[:, 7:-1:8]   # stops at W-2 at most → length N
+    vb_right = g[:, 8::8]     # starts at 8 → length N
+    if vb_left.size == 0 or vb_right.size == 0:
+        v_mean = 0.0
+    else:
+        v_mean = float(np.mean(np.abs(vb_left - vb_right)))
+
+    # Horizontal 8x8 boundaries: compare row k vs k+1 for k = 7,15,23,..., up to H-2
+    hb_top   = g[7:-1:8, :]   # length M
+    hb_bot   = g[8::8,  :]    # length M
+    if hb_top.size == 0 or hb_bot.size == 0:
+        h_mean = 0.0
+    else:
+        h_mean = float(np.mean(np.abs(hb_top - hb_bot)))
+
+    return v_mean + h_mean
+
+
+def chroma_luma_mismatch(face_bgr):
+    yuv = cv2.cvtColor(face_bgr, cv2.COLOR_BGR2YUV)
+    Y, U, V = [x.astype(np.float32) for x in cv2.split(yuv)]
+    Gy = cv2.Sobel(Y, cv2.CV_32F, 1, 1)
+    Gu = cv2.Sobel(U, cv2.CV_32F, 1, 1)
+    Gv = cv2.Sobel(V, cv2.CV_32F, 1, 1)
+    cu = np.corrcoef(Gy.ravel(), Gu.ravel())[0, 1]
+    cv = np.corrcoef(Gy.ravel(), Gv.ravel())[0, 1]
+    return float(1.0 - 0.5 * (cu + cv))
+
 def heatmap_from_laplacian(face_bgr, lap):
-    hm = (255 * (np.abs(lap) / (np.abs(lap).max()+1e-8))).astype(np.uint8)
+    hm = (255 * (np.abs(lap) / (np.abs(lap).max() + 1e-8))).astype(np.uint8)
     hm = cv2.applyColorMap(hm, cv2.COLORMAP_JET)
     return cv2.addWeighted(face_bgr, 0.65, hm, 0.35, 0)
 
-# MediaPipe setup. Use detection to find the face box and then face mesh to detect facial keypoints. 
-mp_face = mp.solutions.face_mesh
-mp_det  = mp.solutions.face_detection
-
-# Creates coordinates around mouth and finds smallest box around it with some error room and then returns that box. 
-def mouth_roi_from_landmarks(face_bgr, landmarks):
-    # simplest: bounding box around mouth indices (e.g., FaceMesh 78..308 inner/outer lips)
-    H, W = face_bgr.shape[:2]
-    mouth_ids = [78,80,81,82,13,312,311,310,308,14] 
-    xs = [int(lm.x*W) for i, lm in enumerate(landmarks) if i in mouth_ids]
-    ys = [int(lm.y*H) for i, lm in enumerate(landmarks) if i in mouth_ids]
-    x1,y1,x2,y2 = max(min(xs)-6,0), max(min(ys)-6,0), min(max(xs)+6,W), min(max(ys)+6,H)
-    return (x1,y1,x2,y2)
-
-# First turns the image into grayscale. Computes two global features. Then picks a mouth-ish region and computes 
-# how uneven the edges are. Next it normalizes and takes a weighted sum. It passes through a sigmoid where 1 = very suspicious. 
-# Builds heatmap overlay for the user. Returns the three features, heatmap overlay, and suspicion score. 
-
+# -------- Public API --------
 def frame_score(face_bgr):
-    import numpy as _np
-    gray = cv2.cvtColor(face_bgr, cv2.COLOR_BGR2GRAY)
+    gray = preprocess_gray(face_bgr)
+
     sharp_var, lap = compute_sharpness(gray)
     high_ratio = compute_high_ratio(gray)
 
-    # mouth-ish ROI = lower half
     H, W = gray.shape
-    edge_glitch = edge_glitch_score(gray[H // 2 : H, :])
+    y0 = int(H * ROI_LOWER_FRAC)
+    edge_glitch = edge_glitch_score(gray[y0:H, :])
 
-    # normalize + combine
-    z = scaler.transform([[sharp_var, high_ratio, edge_glitch]])[0]
-    raw = 0.4 * z[0] + 0.4 * z[1] + 0.2 * z[2]
-    suspicion = 1.0 / (1.0 + _np.exp(-raw))
+    blk = block_boundary_energy(gray)
+    clm = chroma_luma_mismatch(face_bgr)
 
+    feats = np.array([sharp_var, high_ratio, edge_glitch, blk, clm], dtype=np.float32)
+    z = scaler.transform([feats])[0]  # z-score with REAL-only stats
+
+    raw = float(np.dot(W, z) + B)
+    suspicion = 1.0 / (1.0 + np.exp(-raw))
     overlay = heatmap_from_laplacian(face_bgr, lap)
-    return {
-        "sharp_var": float(sharp_var),
-        "high_ratio": float(high_ratio),
-        "edge_glitch": float(edge_glitch),
-        "suspicion": float(suspicion),
-        "overlay": overlay,
-    }
+
+    return dict(
+        sharp_var=float(sharp_var),
+        high_ratio=float(high_ratio),
+        edge_glitch=float(edge_glitch),
+        block_energy=float(blk),
+        chroma_mismatch=float(clm),
+        suspicion=float(suspicion),
+        overlay=overlay,
+    )
