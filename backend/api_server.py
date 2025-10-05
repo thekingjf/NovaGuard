@@ -1,58 +1,57 @@
 #!/usr/bin/env python3
-"""Flask API server for NovaGuard deepfake detection."""
+"""Flask API server for NovaGuard deepfake detection (Vercel-friendly)."""
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from pathlib import Path
 import uuid
 import sys
 
+# Make local modules importable (runner.py lives next to this file)
 sys.path.insert(0, str(Path(__file__).parent))
-
-# Import the scoring function from runner.py
-from runner import score_single_video
 
 app = Flask(__name__)
 CORS(app)
 
-UPLOAD_FOLDER = Path(__file__).parent / "uploads"
-UPLOAD_FOLDER.mkdir(exist_ok=True)
-HEATMAP_FOLDER = Path(__file__).parent / "out" / "heatmaps"
-HEATMAP_FOLDER.mkdir(parents=True, exist_ok=True)
+# ---- Serverless-safe paths (only /tmp is writable on Vercel) ----
+UPLOAD_FOLDER = Path("/tmp/uploads"); UPLOAD_FOLDER.mkdir(parents=True, exist_ok=True)
+HEATMAP_FOLDER = Path("/tmp/heatmaps"); HEATMAP_FOLDER.mkdir(parents=True, exist_ok=True)
 
 ALLOWED_EXTENSIONS = {'mp4', 'mov', 'mkv', 'avi', 'webm', 'm4v'}
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
-app.config['MAX_CONTENT_LENGTH'] = 500 * 1024 * 1024
 
-def allowed_file(filename):
+# Vercel request body limit is ~4.5 MB; keep below to avoid 413s.
+app.config['MAX_CONTENT_LENGTH'] = 4 * 1024 * 1024
+
+def allowed_file(filename: str) -> bool:
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
-@app.route('/api/health', methods=['GET'])
-def health_check():
-    return jsonify({"status": "healthy", "service": "NovaGuard API"})
-
+# ------------------ Health ------------------
 @app.get("/health")
 def health():
-    return {"ok": True}
+    return {"ok": True, "service": "NovaGuard API"}
 
-@app.route('/api/analyze', methods=['POST'])
+# ------------------ Analyze -----------------
+@app.post("/analyze")
 def analyze():
+    # Lazy imports so health works without heavy deps
+    from werkzeug.utils import secure_filename
+    from runner import score_single_video
+
     if 'video' not in request.files:
         return jsonify({"error": "No video file provided"}), 400
+
     file = request.files['video']
     if file.filename == '':
         return jsonify({"error": "No file selected"}), 400
     if not allowed_file(file.filename):
         return jsonify({"error": "Invalid file type"}), 400
+
     try:
-        from werkzeug.utils import secure_filename
-        original_filename = secure_filename(file.filename)
-        unique_filename = f"{uuid.uuid4()}_{original_filename}"
-        filepath = UPLOAD_FOLDER / unique_filename
+        original = secure_filename(file.filename)
+        unique = f"{uuid.uuid4()}_{original}"
+        filepath = UPLOAD_FOLDER / unique
         file.save(str(filepath))
 
-        print(f"[INFO] Analyzing video: {original_filename}")
-
-        # Use runner.py's score_single_video function
         results = score_single_video(
             video_path=filepath,
             every=3,
@@ -62,28 +61,20 @@ def analyze():
             save_first_n_heatmaps=50
         )
 
-        # Check for errors in results
-        if "error" in results:
-            print(f"[ERROR] {results['error']}")
+        if isinstance(results, dict) and "error" in results:
             return jsonify(results), 500
 
-        # Add user-friendly verdict field
-        results["verdict"] = "DEEPFAKE DETECTED" if results["decision"] else "AUTHENTIC"
-        results["confidence"] = float(results["video_score"] * 100)
-
-        # Extract frame details for frontend (first 10 frames)
-        results["frame_details"] = results.get("per_frame", [])[:10]
-
-        print(f"[INFO] Analysis complete: {results.get('verdict', 'Unknown')}")
-        print(f"[INFO] Frames scored: {results.get('frames_scored', 0)}, Score: {results.get('video_score', 0):.3f}")
+        results["verdict"] = "DEEPFAKE DETECTED" if results.get("decision") else "AUTHENTIC"
+        if "video_score" in results:
+            results["confidence"] = float(results["video_score"] * 100)
+        results["frame_details"] = (results.get("per_frame") or [])[:10]
 
         return jsonify(results), 200
     except Exception as e:
-        import traceback
-        traceback.print_exc()
+        import traceback; traceback.print_exc()
         return jsonify({"error": str(e)}), 500
 
-if __name__ == '__main__':
-    print("🚀 Starting NovaGuard API Server...")
+if __name__ == "__main__":
+    print("🚀 Starting NovaGuard API Server (local)")
     print(f"📁 Upload folder: {UPLOAD_FOLDER.resolve()}")
-    app.run(host='0.0.0.0', port=5001, debug=True)
+    app.run(host="0.0.0.0", port=5001, debug=True)
