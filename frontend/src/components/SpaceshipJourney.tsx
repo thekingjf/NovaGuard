@@ -3,11 +3,11 @@ import { Rocket } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
 const planets = [
-  { name: "Face Mesh Analysis", color: "hsl(250, 70%, 60%)" },
-  { name: "Deepfake Detection", color: "hsl(180, 80%, 60%)" },
-  { name: "Temporal Coherence", color: "hsl(280, 70%, 65%)" },
-  { name: "Audio Sync Check", color: "hsl(200, 75%, 60%)" },
-  { name: "Artifact Detection", color: "hsl(160, 80%, 55%)" },
+  { name: "Sharpness Variance", color: "hsl(250, 70%, 60%)" },
+  { name: "High Frequency Ratio", color: "hsl(180, 80%, 60%)" },
+  { name: "Edge Glitch Score", color: "hsl(280, 70%, 65%)" },
+  { name: "Block Energy", color: "hsl(200, 75%, 60%)" },
+  { name: "Chroma Mismatch", color: "hsl(160, 80%, 55%)" },
 ];
 
 export const SpaceshipJourney = () => {

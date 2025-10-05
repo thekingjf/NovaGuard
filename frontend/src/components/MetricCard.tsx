@@ -32,7 +32,7 @@ export const MetricCard = ({ name, score, details, color }: MetricCardProps) => 
           className="w-12 h-12 rounded-full animate-pulse-glow"
           style={{ 
             background: `radial-gradient(circle, ${color}, transparent)`,
-            boxShadow: `0 0 30px ${color}`,
+
           }}
         />
       </div>
