@@ -118,7 +118,14 @@ def frame_score(face_bgr):
     feats = np.array([sharp_var, high_ratio, edge_glitch, blk, clm], dtype=np.float32)
     z = scaler.transform([feats])[0]  # z-score with REAL-only stats
 
-    raw = float(np.dot(W, z) + B)
+    Wv = np.asarray(W, dtype=np.float32).reshape(-1)
+    Zv = np.asarray(z, dtype=np.float32).reshape(-1)
+    if Wv.shape[0] != Zv.shape[0]:
+        if Wv.shape[0] < Zv.shape[0]:
+            Wv = np.pad(Wv, (0, Zv.shape[0]-Wv.shape[0]), constant_values=0.0)
+        else:
+            Wv = Wv[:Zv.shape[0]]
+    raw = float(np.dot(Wv, Zv) + float(B))
     suspicion = 1.0 / (1.0 + np.exp(-raw))
     overlay = heatmap_from_laplacian(face_bgr, lap)
 
