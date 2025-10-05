@@ -4,3 +4,9 @@
 /backend/deepfake_model/outputs/**
 /backend/deepfake_model/checkpoints/**
 *.mp4 *.mov *.avi
+/backend/__pycache__/**
+/backend/out/**
+/backend/real_data/**
+/backend/test_data/**
+/backend/last_run.log/
+
