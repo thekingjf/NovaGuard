@@ -78,3 +78,5 @@ if __name__ == "__main__":
     print("🚀 Starting NovaGuard API Server (local)")
     print(f"📁 Upload folder: {UPLOAD_FOLDER.resolve()}")
     app.run(host="0.0.0.0", port=5001, debug=True)
+
+handler = app
