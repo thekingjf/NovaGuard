@@ -4,9 +4,57 @@ import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 
+const API_URL = "http://localhost:5001/api";
+
 export const VideoUpload = () => {
   const [isDragging, setIsDragging] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
   const navigate = useNavigate();
+
+  const uploadVideo = async (file: File) => {
+    setIsUploading(true);
+    const formData = new FormData();
+    formData.append("video", file);
+
+    try {
+      // Store the file info in sessionStorage for the analysis page
+      sessionStorage.setItem("uploadedVideo", JSON.stringify({
+        name: file.name,
+        size: file.size,
+        type: file.type
+      }));
+
+      // Navigate to analysis page immediately
+      toast.success("Video uploaded! Starting analysis...");
+      navigate("/analysis");
+
+      // Start the analysis in the background
+      const response = await fetch(`${API_URL}/analyze`, {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!response.ok) {
+        throw new Error(`Analysis failed: ${response.statusText}`);
+      }
+
+      const results = await response.json();
+
+      // Store results in sessionStorage
+      sessionStorage.setItem("analysisResults", JSON.stringify(results));
+
+      // Trigger a custom event to notify the Analysis page
+      window.dispatchEvent(new Event("analysisComplete"));
+
+    } catch (error) {
+      console.error("Error analyzing video:", error);
+      toast.error("Failed to analyze video. Please try again.");
+      sessionStorage.removeItem("uploadedVideo");
+      navigate("/");
+    } finally {
+      setIsUploading(false);
+    }
+  };
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -26,18 +74,16 @@ export const VideoUpload = () => {
     const videoFile = files.find((file) => file.type.startsWith("video/"));
 
     if (videoFile) {
-      toast.success("Video uploaded! Starting analysis...");
-      setTimeout(() => navigate("/analysis"), 500);
+      uploadVideo(videoFile);
     } else {
       toast.error("Please upload a valid video file (.mp4)");
     }
-  }, [navigate]);
+  }, []);
 
   const handleFileInput = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file && file.type.startsWith("video/")) {
-      toast.success("Video uploaded! Starting analysis...");
-      setTimeout(() => navigate("/analysis"), 500);
+      uploadVideo(file);
     } else {
       toast.error("Please upload a valid video file (.mp4)");
     }
@@ -52,8 +98,8 @@ export const VideoUpload = () => {
         className={`
           relative w-full max-w-2xl p-12 rounded-2xl border-2 border-dashed
           transition-all duration-300
-          ${isDragging 
-            ? "border-primary bg-primary/10 scale-105" 
+          ${isDragging
+            ? "border-primary bg-primary/10 scale-105"
             : "border-border hover:border-primary/50 hover:bg-card/50"
           }
         `}
@@ -86,7 +132,7 @@ export const VideoUpload = () => {
             className="hidden"
             id="video-input"
           />
-          
+
           <Button
             variant="default"
             size="lg"
