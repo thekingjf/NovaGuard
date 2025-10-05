@@ -6,6 +6,7 @@ import { CheckCircle2, XCircle, AlertCircle } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useEffect, useState } from "react";
 
+
 interface FrameDetail {
   sharp_var?: number;
   high_ratio?: number;
@@ -137,9 +138,21 @@ const Dashboard = () => {
             <div className="text-right">
               <div className="flex items-center gap-3 justify-end mb-2">
                 {isDeepfake ? (
-                  <XCircle className="w-12 h-12 text-destructive animate-pulse-glow" />
+                  <img
+                    src="/icons/red-x.png"
+                    alt="Deepfake detected"
+                    width={48}
+                    height={48}
+                    className="w-12 h-12 animate-pulse-glow"
+                  />
                 ) : (
-                  <CheckCircle2 className="w-12 h-12 text-green-500 animate-pulse-glow" />
+                  <img
+                    src="/icons/green-check.png"
+                    alt="Clean"
+                    width={48}
+                    height={48}
+                    className="w-12 h-12 animate-pulse-glow"
+                  />
                 )}
               </div>
               <p
