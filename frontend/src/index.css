@@ -1,0 +1,116 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Definition of the design system. All colors, gradients, fonts, etc should be defined here. 
+All colors MUST be HSL.
+*/
+
+@layer base {
+  :root {
+    --background: 240 20% 5%;
+    --foreground: 210 40% 98%;
+
+    --card: 240 15% 8%;
+    --card-foreground: 210 40% 98%;
+
+    --popover: 240 15% 8%;
+    --popover-foreground: 210 40% 98%;
+
+    --primary: 250 70% 60%;
+    --primary-foreground: 210 40% 98%;
+
+    --secondary: 240 10% 15%;
+    --secondary-foreground: 210 40% 98%;
+
+    --muted: 240 10% 15%;
+    --muted-foreground: 215 20% 65%;
+
+    --accent: 180 80% 60%;
+    --accent-foreground: 240 20% 5%;
+
+    --destructive: 0 70% 55%;
+    --destructive-foreground: 210 40% 98%;
+
+    --border: 240 15% 18%;
+    --input: 240 15% 18%;
+    --ring: 250 70% 60%;
+
+    --radius: 0.75rem;
+
+    /* Space theme custom tokens */
+    --cosmic-purple: 250 70% 60%;
+    --cosmic-cyan: 180 80% 60%;
+    --cosmic-blue: 220 90% 65%;
+    --deep-space: 240 20% 5%;
+    --nebula-glow: 250 70% 60%;
+    
+    /* Gradients */
+    --gradient-cosmic: linear-gradient(135deg, hsl(var(--cosmic-purple)) 0%, hsl(var(--cosmic-cyan)) 100%);
+    --gradient-nebula: radial-gradient(ellipse at center, hsl(var(--cosmic-purple) / 0.3) 0%, transparent 70%);
+    --gradient-planet: linear-gradient(135deg, hsl(var(--cosmic-blue)) 0%, hsl(var(--cosmic-purple)) 100%);
+    
+    /* Shadows & Glows */
+    --glow-cosmic: 0 0 40px hsl(var(--cosmic-purple) / 0.4), 0 0 80px hsl(var(--cosmic-purple) / 0.2);
+    --glow-accent: 0 0 30px hsl(var(--accent) / 0.5);
+    --shadow-card: 0 10px 40px hsl(240 20% 2% / 0.5);
+    
+    /* Transitions */
+    --transition-smooth: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    background-image: radial-gradient(ellipse at top, hsl(var(--cosmic-purple) / 0.1) 0%, transparent 50%);
+  }
+}
+
+@layer utilities {
+  .glow-text {
+    text-shadow: 0 0 20px hsl(var(--cosmic-purple) / 0.5);
+  }
+  
+  .cosmic-border {
+    border: 1px solid transparent;
+    background: linear-gradient(hsl(var(--background)), hsl(var(--background))) padding-box,
+                var(--gradient-cosmic) border-box;
+  }
+  
+  .animate-float {
+    animation: float 6s ease-in-out infinite;
+  }
+  
+  @keyframes float {
+    0%, 100% { transform: translateY(0px); }
+    50% { transform: translateY(-20px); }
+  }
+  
+  .animate-pulse-glow {
+    animation: pulse-glow 2s ease-in-out infinite;
+  }
+  
+  @keyframes pulse-glow {
+    0%, 100% { 
+      box-shadow: 0 0 20px hsl(var(--cosmic-purple) / 0.3);
+    }
+    50% { 
+      box-shadow: 0 0 40px hsl(var(--cosmic-purple) / 0.6);
+    }
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+  }
+}
