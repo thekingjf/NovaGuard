@@ -1,13 +1,19 @@
-
 {
   "version": 2,
   "builds": [
     {
       "src": "api_server.py",
-      "use": "@vercel/python"
+      "use": "@vercel/python",
+      "config": {
+        "maxLambdaSize": "50mb"
+      }
     }
   ],
   "routes": [
+    {
+      "src": "/api/(.*)",
+      "dest": "api_server.py"
+    },
     {
       "src": "/(.*)",
       "dest": "api_server.py"
@@ -15,5 +21,11 @@
   ],
   "env": {
     "FLASK_ENV": "production"
+  },
+  "functions": {
+    "api_server.py": {
+      "memory": 1024,
+      "maxDuration": 10
+    }
   }
 }
