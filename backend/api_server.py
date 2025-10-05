@@ -4,6 +4,7 @@ from flask_cors import CORS
 from pathlib import Path
 import uuid
 import sys
+import os
 
 sys.path.insert(0, str(Path(__file__).parent))
 
@@ -11,7 +12,14 @@ sys.path.insert(0, str(Path(__file__).parent))
 from runner import score_single_video
 
 app = Flask(__name__)
-CORS(app)
+
+# Configure CORS: allow explicit origins via env (comma-separated), else allow all (dev)
+cors_origins = os.environ.get("CORS_ORIGINS")
+if cors_origins:
+    allowed = [o.strip() for o in cors_origins.split(",") if o.strip()]
+    CORS(app, resources={r"/api/*": {"origins": allowed}})
+else:
+    CORS(app)
 
 UPLOAD_FOLDER = Path(__file__).parent / "uploads"
 UPLOAD_FOLDER.mkdir(exist_ok=True)
@@ -93,6 +101,9 @@ def analyze():
         return jsonify({"error": str(e)}), 500
 
 if __name__ == '__main__':
+    port = int(os.environ.get('PORT', '5001'))
+    debug = os.environ.get('FLASK_DEBUG', '0') == '1'
     print("🚀 Starting NovaGuard API Server...")
     print(f"📁 Upload folder: {UPLOAD_FOLDER.resolve()}")
-    app.run(host='0.0.0.0', port=5001, debug=True)
+    print(f"🌐 Port: {port} | Debug: {debug}")
+    app.run(host='0.0.0.0', port=port, debug=debug)

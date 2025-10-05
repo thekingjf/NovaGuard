@@ -4,14 +4,15 @@ import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 
-const API_URL = "http://localhost:5001/api";
+// Prefer env-configured API in production; fall back to local dev server
+const API_URL = import.meta.env.VITE_API_BASE || "http://localhost:5001/api";
 
 export const VideoUpload = () => {
   const [isDragging, setIsDragging] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const navigate = useNavigate();
 
-  const uploadVideo = async (file: File) => {
+  const uploadVideo = useCallback(async (file: File) => {
     setIsUploading(true);
     const formData = new FormData();
     formData.append("video", file);
@@ -54,7 +55,7 @@ export const VideoUpload = () => {
     } finally {
       setIsUploading(false);
     }
-  };
+  }, [navigate]);
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -78,7 +79,7 @@ export const VideoUpload = () => {
     } else {
       toast.error("Please upload a valid video file (.mp4)");
     }
-  }, []);
+  }, [uploadVideo]);
 
   const handleFileInput = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
