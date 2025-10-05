@@ -41,6 +41,10 @@ def round_numbers(obj, decimals=2):
 def health_check():
     return jsonify({"status": "healthy", "service": "NovaGuard API"})
 
+@app.get("/health")
+def health():
+    return {"ok": True}
+
 @app.route('/api/analyze', methods=['POST'])
 def analyze():
     if 'video' not in request.files:

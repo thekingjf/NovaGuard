@@ -2,11 +2,11 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Rocket } from "lucide-react";
 
 const planets = [
-  { name: "Face Mesh Analysis", color: "hsl(250, 70%, 60%)" },
-  { name: "Deepfake Detection", color: "hsl(180, 80%, 60%)" },
-  { name: "Temporal Coherence", color: "hsl(280, 70%, 65%)" },
-  { name: "Audio Sync Check", color: "hsl(200, 75%, 60%)" },
-  { name: "Artifact Detection", color: "hsl(160, 80%, 55%)" },
+  { name: "Sharpness Variance", color: "hsl(250, 70%, 60%)" },
+  { name: "High Frequency Ratio", color: "hsl(180, 80%, 60%)" },
+  { name: "Edge Glitch Score", color: "hsl(280, 70%, 65%)" },
+  { name: "Block Energy", color: "hsl(200, 75%, 60%)" },
+  { name: "Chroma Mismatch", color: "hsl(160, 80%, 55%)" },
 ];
 
 interface SpaceshipJourneyProps {
@@ -20,8 +20,6 @@ export const SpaceshipJourney = ({ analysisComplete = false, onProgressComplete 
   const [currentPlanet, setCurrentPlanet] = useState(0);
   const [waitingForAnalysis, setWaitingForAnalysis] = useState(false);
 
-  // flashing frame overlay (kept from your original)
-  const [showFrame, setShowFrame] = useState(false);
 
   const wrapRef = useRef<HTMLDivElement | null>(null);
   // refs to avoid restarting the animation loop when props/state change
@@ -111,15 +109,6 @@ export const SpaceshipJourney = ({ analysisComplete = false, onProgressComplete 
     };
   }, [totalMs, freezePoint]); // constants; effect effectively runs once
 
-  // flashing preview every 2s (unchanged)
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setShowFrame(true);
-      const off = setTimeout(() => setShowFrame(false), 800);
-      return () => clearTimeout(off);
-    }, 2000);
-    return () => clearInterval(interval);
-  }, []);
 
   // kept in case you want it later; unused now
   useMemo(() => Math.floor(progress * planets.length), [progress]);
@@ -208,16 +197,6 @@ export const SpaceshipJourney = ({ analysisComplete = false, onProgressComplete 
         </div>
       </div>
 
-      {/* --- Flashing frame preview overlay (unchanged) --- */}
-      {showFrame && (
-        <div className="fixed inset-0 z-30 flex items-center justify-center pointer-events-none">
-          <div className="w-96 h-64 bg-card border-2 border-destructive rounded-lg animate-pulse-glow">
-            <div className="w-full h-full flex items-center justify-center text-destructive font-bold">
-              SUSPICIOUS FRAME DETECTED
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 };

@@ -2,7 +2,7 @@ import { StarField } from "@/components/StarField";
 import { MetricCard } from "@/components/MetricCard";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { CheckCircle2, XCircle, AlertCircle } from "lucide-react";
+import { AlertCircle } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useEffect, useState } from "react";
 
@@ -15,12 +15,12 @@ interface FrameDetail {
 }
 
 interface AnalysisResults {
-  decision: boolean;
+  decision: boolean;              // true => AI-generated, false => authentic
   confidence?: number;
   video_score: number;
   frames_scored: number;
   fps?: number;
-  verdict?: string;
+  verdict?: string;               // ignored for display (we enforce our own labels)
   threshold_used: number;
   k_hits: number;
   k_required: number;
@@ -37,7 +37,6 @@ const Dashboard = () => {
   const [videoInfo, setVideoInfo] = useState<VideoInfo | null>(null);
 
   useEffect(() => {
-    // Retrieve results from sessionStorage
     const resultsStr = sessionStorage.getItem("analysisResults");
     const videoStr = sessionStorage.getItem("uploadedVideo");
 
@@ -72,12 +71,19 @@ const Dashboard = () => {
     );
   }
 
-  // Extract metrics from results
-  const isDeepfake = analysisResults.decision;
-  const confidence = analysisResults.confidence || (analysisResults.video_score * 100);
+  // --- Verdict mapping (authoritative) ---
+  // If your backend uses the opposite meaning, flip this boolean.
+  const isAI = !!analysisResults.decision;                 // true -> AI Generated, false -> Authentic
+  const verdictText = isAI ? "AI Generated" : "Authentic";
+  const verdictColor = isAI ? "text-destructive" : "text-green-500";
+  const iconSrc     = isAI ? "/icons/red-x.svg" : "/icons/green-check.png";
+  const iconAlt     = isAI ? "AI generated" : "Authentic";
+
+  // Confidence display (falls back to video_score * 100)
+  const confidence = analysisResults.confidence ?? analysisResults.video_score * 100;
   const confidenceLevel = confidence >= 75 ? "High" : confidence >= 50 ? "Medium" : "Low";
 
-  // Create metrics from frame details if available
+  // Example metrics from first frame (optional)
   const sampleFrame = analysisResults.frame_details?.[0] || {};
   const metrics = [
     {
@@ -134,21 +140,32 @@ const Dashboard = () => {
                 Analyzed {analysisResults.frames_scored} frames at {analysisResults.fps?.toFixed(1)} FPS
               </p>
             </div>
+
             <div className="text-right">
               <div className="flex items-center gap-3 justify-end mb-2">
-                {isDeepfake ? (
-                  <XCircle className="w-12 h-12 text-destructive animate-pulse-glow" />
-                ) : (
-                  <CheckCircle2 className="w-12 h-12 text-green-500 animate-pulse-glow" />
-                )}
+                {/* Circular icon with circular glow */}
+                <div className="relative">
+                  <div
+                    className={`absolute inset-0 rounded-full blur-lg ${
+                      isAI ? "bg-destructive/35" : "bg-green-500/35"
+                    }`}
+                    aria-hidden
+                  />
+                  <img
+                    src={iconSrc}
+                    alt={iconAlt}
+                    width={48}
+                    height={48}
+                    className="relative w-12 h-12 rounded-full object-contain bg-transparent"
+                  />
+                </div>
               </div>
-              <p
-                className={`text-3xl font-bold ${
-                  isDeepfake ? "text-destructive" : "text-green-500"
-                }`}
-              >
-                {analysisResults.verdict || (isDeepfake ? "DEEPFAKE DETECTED" : "AUTHENTIC")}
+
+              {/* Enforced verdict text */}
+              <p className={`text-3xl font-bold ${verdictColor}`}>
+                {verdictText}
               </p>
+
               <p className="text-sm text-muted-foreground mt-1">
                 {confidenceLevel} Confidence
               </p>
