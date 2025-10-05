@@ -21,11 +21,5 @@
   ],
   "env": {
     "FLASK_ENV": "production"
-  },
-  "functions": {
-    "api_server.py": {
-      "memory": 1024,
-      "maxDuration": 10
-    }
   }
 }
