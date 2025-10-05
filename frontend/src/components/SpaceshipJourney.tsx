@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Rocket } from "lucide-react";
-import { useNavigate } from "react-router-dom";
 
 const planets = [
   { name: "Sharpness Variance", color: "hsl(250, 70%, 60%)" },
@@ -10,50 +9,99 @@ const planets = [
   { name: "Chroma Mismatch", color: "hsl(160, 80%, 55%)" },
 ];
 
-export const SpaceshipJourney = () => {
-  const navigate = useNavigate();
+interface SpaceshipJourneyProps {
+  analysisComplete?: boolean;
+  onProgressComplete?: () => void;
+}
 
+export const SpaceshipJourney = ({ analysisComplete = false, onProgressComplete }: SpaceshipJourneyProps) => {
   // overall progress [0..1] and which planet is active
   const [progress, setProgress] = useState(0);
   const [currentPlanet, setCurrentPlanet] = useState(0);
+  const [waitingForAnalysis, setWaitingForAnalysis] = useState(false);
 
   // flashing frame overlay (kept from your original)
   const [showFrame, setShowFrame] = useState(false);
 
   const wrapRef = useRef<HTMLDivElement | null>(null);
+  // refs to avoid restarting the animation loop when props/state change
+  const analysisCompleteRef = useRef(analysisComplete);
+  const onCompleteRef = useRef(onProgressComplete);
+  const frozenRef = useRef(false);
+  const resumeStartRef = useRef<number | null>(null);
+  const startRef = useRef<number | null>(null);
+  const progressRef = useRef(0);
+
+  useEffect(() => {
+    analysisCompleteRef.current = analysisComplete;
+  }, [analysisComplete]);
+
+  useEffect(() => {
+    onCompleteRef.current = onProgressComplete;
+  }, [onProgressComplete]);
 
   // === timing ===
   const segmentMs = 3000; // each planet glows for 3s
   const totalMs = segmentMs * planets.length;
+  const freezePoint = 0.88; // Freeze at 88% if analysis not complete
 
-  // smooth progress + equal planet segments
+  // smooth progress + equal planet segments (single RAF loop; do not restart on state changes)
   useEffect(() => {
-    const prefersReduced =
-      window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches;
-
-    if (prefersReduced) {
-      setProgress(1);
-      setCurrentPlanet(planets.length - 1);
-      const t = setTimeout(() => navigate("/dashboard"), 600);
-      return () => clearTimeout(t);
-    }
-
-    let start: number | null = null;
     let rafId: number | null = null;
 
     const step = (ts: number) => {
-      if (start === null) start = ts;
-      const p = Math.min(1, (ts - start) / totalMs);
-      setProgress(p);
+      if (startRef.current === null) startRef.current = ts;
+      const elapsed = ts - startRef.current;
 
-      // split [0,1] into N equal segments
-      const idx = Math.min(planets.length - 1, Math.floor(p * planets.length));
-      setCurrentPlanet(idx);
+      // Natural linear progression
+      const pLinear = Math.min(1, elapsed / totalMs);
+      let p = pLinear;
 
+      if (!frozenRef.current) {
+        // Engage freeze at 88% if analysis isn't done yet
+        if (pLinear >= freezePoint && !analysisCompleteRef.current) {
+          p = freezePoint;
+          frozenRef.current = true;
+          resumeStartRef.current = null;
+          setWaitingForAnalysis(true);
+        }
+      } else {
+        // While frozen, either stay at 88% or resume to 100% once analysis completes
+        if (!analysisCompleteRef.current) {
+          p = freezePoint;
+        } else {
+          if (resumeStartRef.current === null) {
+            resumeStartRef.current = ts;
+          }
+          const resumeElapsed = ts - resumeStartRef.current;
+          const remainingTime = totalMs * (1 - freezePoint); // 12% of total time
+          const frac = Math.min(1, resumeElapsed / remainingTime);
+          p = freezePoint + frac * (1 - freezePoint);
+        }
+      }
+
+      // Update UI state
+      if (p !== progressRef.current) {
+        progressRef.current = p;
+        setProgress(p);
+        const idx = Math.min(planets.length - 1, Math.floor(p * planets.length));
+        setCurrentPlanet(idx);
+      }
+
+      // Continue or finish
       if (p < 1) {
         rafId = requestAnimationFrame(step);
       } else {
-        setTimeout(() => navigate("/dashboard"), 800);
+        // Only navigate once both: progress reached 100% AND analysis is complete
+        if (analysisCompleteRef.current) {
+          const t = setTimeout(() => onCompleteRef.current?.(), 600);
+          // clear the timeout on unmount
+          // store it on the rafId var temporarily using negative sentinel
+          // but we'll rely on effect cleanup instead
+        } else {
+          // Safety: shouldn't happen because we freeze at 88% until complete
+          rafId = requestAnimationFrame(step);
+        }
       }
     };
 
@@ -61,7 +109,7 @@ export const SpaceshipJourney = () => {
     return () => {
       if (rafId) cancelAnimationFrame(rafId);
     };
-  }, [navigate, totalMs]);
+  }, [totalMs, freezePoint]); // constants; effect effectively runs once
 
   // flashing preview every 2s (unchanged)
   useEffect(() => {
@@ -102,7 +150,9 @@ export const SpaceshipJourney = () => {
 
               {index === currentPlanet && (
                 <div className="absolute -top-8 left-1/2 -translate-x-1/2 whitespace-nowrap">
-                  <span className="text-xs text-accent font-bold animate-pulse">Analyzing...</span>
+                  <span className="text-xs text-accent font-bold animate-pulse">
+                    {waitingForAnalysis && progress >= freezePoint ? "Processing..." : "Analyzing..."}
+                  </span>
                 </div>
               )}
             </div>
@@ -144,6 +194,15 @@ export const SpaceshipJourney = () => {
               </div>
             </div>
           </div>
+
+          {/* Status message when waiting */}
+          {waitingForAnalysis && !analysisComplete && (
+            <div className="mt-4 text-center">
+              <p className="text-sm text-accent animate-pulse">
+                Finalizing analysis, please wait...
+              </p>
+            </div>
+          )}
 
           {/* (Removed) segmented mini-pills and Processing label */}
         </div>
