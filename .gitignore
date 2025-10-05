@@ -10,4 +10,7 @@
 /backend/test_data/**
 /backend/last_run.log/
 /backend/.venc/**
-
+/frontend/node_modules/**
+/frontend/node_modules/.vite/deps/**
+/backend/uploads/**
+/backend/deepfake_model/.DS_Store
