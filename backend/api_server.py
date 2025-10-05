@@ -26,6 +26,17 @@ app.config['MAX_CONTENT_LENGTH'] = 500 * 1024 * 1024
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
+def round_numbers(obj, decimals=2):
+    """Recursively round all float values in a dict/list to specified decimals."""
+    if isinstance(obj, dict):
+        return {k: round_numbers(v, decimals) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [round_numbers(item, decimals) for item in obj]
+    elif isinstance(obj, float):
+        return round(obj, decimals)
+    else:
+        return obj
+
 @app.route('/api/health', methods=['GET'])
 def health_check():
     return jsonify({"status": "healthy", "service": "NovaGuard API"})
@@ -70,8 +81,11 @@ def analyze():
         # Extract frame details for frontend (first 10 frames)
         results["frame_details"] = results.get("per_frame", [])[:10]
 
+        # Round all numeric values to 2 decimal places
+        results = round_numbers(results, decimals=2)
+
         print(f"[INFO] Analysis complete: {results.get('verdict', 'Unknown')}")
-        print(f"[INFO] Frames scored: {results.get('frames_scored', 0)}, Score: {results.get('video_score', 0):.3f}")
+        print(f"[INFO] Frames scored: {results.get('frames_scored', 0)}, Score: {results.get('video_score', 0):.2f}")
 
         return jsonify(results), 200
     except Exception as e:
