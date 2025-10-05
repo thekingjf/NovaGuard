@@ -1,10 +1,14 @@
+import React, { useState, useEffect } from "react";
 import { StarField } from "@/components/StarField";
-import { MetricCard } from "@/components/MetricCard";
-import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { AlertCircle } from "lucide-react";
+import { AlertCircle, HelpCircle, ArrowLeft, CheckCircle, XCircle } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import { useEffect, useState } from "react";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 interface FrameDetail {
   sharp_var?: number;
@@ -35,6 +39,16 @@ const Dashboard = () => {
   const navigate = useNavigate();
   const [analysisResults, setAnalysisResults] = useState<AnalysisResults | null>(null);
   const [videoInfo, setVideoInfo] = useState<VideoInfo | null>(null);
+  const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
+
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      setMousePosition({ x: e.clientX / window.innerWidth, y: e.clientY / window.innerHeight });
+    };
+
+    window.addEventListener('mousemove', handleMouseMove);
+    return () => window.removeEventListener('mousemove', handleMouseMove);
+  }, []);
 
   useEffect(() => {
     const resultsStr = sessionStorage.getItem("analysisResults");
@@ -54,15 +68,33 @@ const Dashboard = () => {
 
   if (!analysisResults) {
     return (
-      <div className="min-h-screen relative py-12 px-4">
+      <div className="min-h-screen relative">
         <StarField />
-        <div className="max-w-7xl mx-auto space-y-8 relative z-10">
-          <div className="text-center space-y-4">
-            <h1 className="text-5xl font-bold glow-text">No Analysis Results</h1>
-            <p className="text-muted-foreground text-lg">
+
+        {/* Mouse-following gradient overlay */}
+        <div
+          className="fixed inset-0 opacity-40 pointer-events-none z-[1]"
+          style={{
+            background: `radial-gradient(circle at ${mousePosition.x * 100}% ${mousePosition.y * 100}%, rgba(139, 92, 246, 0.3), transparent 40%)`,
+          }}
+        />
+
+        <div className="relative z-10 flex items-center justify-center min-h-screen px-4">
+          <div className="text-center space-y-8 max-w-2xl mx-auto">
+            <div className="relative">
+              <div className="absolute inset-0 bg-gradient-to-br from-purple-500/20 to-pink-500/20 rounded-full blur-3xl" />
+              <h1 className="relative text-6xl md:text-7xl font-bold bg-gradient-to-r from-white via-purple-200 to-white bg-clip-text text-transparent">
+                No Analysis Results
+              </h1>
+            </div>
+            <p className="text-xl text-gray-400">
               Please upload a video to analyze
             </p>
-            <Button onClick={() => navigate("/")} className="mt-4">
+            <Button
+              onClick={() => navigate("/")}
+              size="lg"
+              className="relative bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white px-8 py-6 text-lg rounded-2xl transition-all duration-300 hover:scale-105 hover:shadow-[0_0_40px_rgba(168,85,247,0.4)]"
+            >
               Upload Video
             </Button>
           </div>
@@ -85,142 +117,245 @@ const Dashboard = () => {
 
   // Example metrics from first frame (optional)
   const sampleFrame = analysisResults.frame_details?.[0] || {};
+  // Metric descriptions for tooltips
+  const metricDescriptions = {
+    "Sharpness Variance": "Measures edge clarity using multi-scale Laplacian analysis. AI-generated content often shows unnaturally smooth or overly sharp edges.",
+    "High Frequency Ratio": "Analyzes the ratio of high-frequency components in the Fourier spectrum. Deepfakes typically lack natural high-frequency details.",
+    "Edge Glitch Score": "Detects inconsistencies in edge boundaries across small tiles. AI generation can create subtle artifacts at edge transitions.",
+    "Block Energy": "Examines compression grid patterns at 8x8 block boundaries. Deepfakes often show unusual block boundary energy.",
+    "Chroma Mismatch": "Checks color channel consistency. AI-generated faces may have unnatural color relationships between channels."
+  };
+
   const metrics = [
     {
       name: "Sharpness Variance",
       score: Math.min(100, (sampleFrame.sharp_var || 0) * 10),
-      details: `Value: ${(sampleFrame.sharp_var || 0).toFixed(3)}`,
-      color: "hsl(250, 70%, 60%)",
+      value: (sampleFrame.sharp_var || 0).toFixed(3),
+      color: "from-purple-500 to-pink-500",
     },
     {
       name: "High Frequency Ratio",
       score: Math.min(100, (sampleFrame.high_ratio || 0) * 100),
-      details: `Value: ${(sampleFrame.high_ratio || 0).toFixed(3)}`,
-      color: "hsl(180, 80%, 60%)",
+      value: (sampleFrame.high_ratio || 0).toFixed(3),
+      color: "from-blue-500 to-cyan-500",
     },
     {
       name: "Edge Glitch Score",
       score: Math.min(100, (sampleFrame.edge_glitch || 0) * 50),
-      details: `Value: ${(sampleFrame.edge_glitch || 0).toFixed(3)}`,
-      color: "hsl(280, 70%, 65%)",
+      value: (sampleFrame.edge_glitch || 0).toFixed(3),
+      color: "from-green-500 to-emerald-500",
     },
     {
       name: "Block Energy",
       score: Math.min(100, (sampleFrame.block_energy || 0) * 2),
-      details: `Value: ${(sampleFrame.block_energy || 0).toFixed(3)}`,
-      color: "hsl(200, 75%, 60%)",
+      value: (sampleFrame.block_energy || 0).toFixed(3),
+      color: "from-orange-500 to-red-500",
     },
     {
       name: "Chroma Mismatch",
       score: Math.min(100, (sampleFrame.chroma_mismatch || 0) * 100),
-      details: `Value: ${(sampleFrame.chroma_mismatch || 0).toFixed(3)}`,
-      color: "hsl(160, 80%, 55%)",
+      value: (sampleFrame.chroma_mismatch || 0).toFixed(3),
+      color: "from-indigo-500 to-purple-500",
     },
   ];
 
   return (
-    <div className="min-h-screen relative py-12 px-4">
-      <StarField />
+    <TooltipProvider>
+      <div className="min-h-screen relative">
+        <StarField />
 
-      <div className="max-w-7xl mx-auto space-y-8 relative z-10">
-        {/* Header */}
-        <div className="text-center space-y-4">
-          <h1 className="text-5xl font-bold glow-text">Analysis Complete</h1>
-          <p className="text-muted-foreground text-lg">
-            {videoInfo?.name || "Video"} - {analysisResults.frames_scored} frames analyzed
-          </p>
-        </div>
+        {/* Mouse-following gradient overlay */}
+        <div
+          className="fixed inset-0 opacity-40 pointer-events-none z-[1]"
+          style={{
+            background: `radial-gradient(circle at ${mousePosition.x * 100}% ${mousePosition.y * 100}%, rgba(139, 92, 246, 0.3), transparent 40%)`,
+          }}
+        />
 
-        {/* Final Verdict Card */}
-        <Card className="cosmic-border bg-card/50 backdrop-blur-sm p-8 max-w-2xl mx-auto">
-          <div className="flex items-center justify-between">
-            <div className="space-y-2">
-              <h2 className="text-2xl font-bold">Final Verdict</h2>
-              <p className="text-muted-foreground">
-                Analyzed {analysisResults.frames_scored} frames at {analysisResults.fps?.toFixed(1)} FPS
+        <div className="relative z-10 min-h-screen py-16 px-8">
+          <div className="max-w-7xl mx-auto space-y-12">
+            {/* Header with back button */}
+            <div className="flex items-center justify-between">
+              <Button
+                variant="ghost"
+                onClick={() => {
+                  sessionStorage.removeItem("analysisResults");
+                  sessionStorage.removeItem("uploadedVideo");
+                  navigate("/");
+                }}
+                className="group"
+              >
+                <ArrowLeft className="w-5 h-5 mr-2 group-hover:-translate-x-1 transition-transform" />
+                Back to Home
+              </Button>
+            </div>
+
+            {/* Page Title */}
+            <div className="text-center space-y-4">
+              <h1 className="text-6xl md:text-7xl font-bold bg-gradient-to-r from-white via-purple-200 to-white bg-clip-text text-transparent">
+                Analysis Complete
+              </h1>
+              <p className="text-xl text-gray-400">
+                {videoInfo?.name || "Video"} - {analysisResults.frames_scored} frames analyzed
               </p>
             </div>
 
-            <div className="text-right">
-              <div className="flex items-center gap-3 justify-end mb-2">
-                {/* Circular icon with circular glow */}
-                <div className="relative">
-                  <div
-                    className={`absolute inset-0 rounded-full blur-lg ${
-                      isAI ? "bg-destructive/35" : "bg-green-500/35"
-                    }`}
-                    aria-hidden
-                  />
-                  <img
-                    src={iconSrc}
-                    alt={iconAlt}
-                    width={48}
-                    height={48}
-                    className="relative w-12 h-12 rounded-full object-contain bg-transparent"
-                  />
+            {/* Final Verdict Card - Ultra Modern */}
+            <div className="relative max-w-4xl mx-auto">
+              <div className="absolute inset-0 bg-gradient-to-br from-purple-500/20 via-pink-500/10 to-transparent rounded-3xl blur-2xl" />
+
+              <div className="relative p-8 md:p-12 rounded-3xl bg-white/5 backdrop-blur-xl border border-white/10">
+                <div className="flex flex-col md:flex-row items-center justify-between gap-8">
+                  <div className="space-y-4 text-center md:text-left">
+                    <h2 className="text-3xl md:text-4xl font-bold text-white">Final Verdict</h2>
+                    <p className="text-gray-400 text-lg">
+                      Analyzed {analysisResults.frames_scored} frames at {analysisResults.fps?.toFixed(1)} FPS
+                    </p>
+                  </div>
+
+                  <div className="text-center">
+                    <div className="flex items-center justify-center gap-4 mb-4">
+                      {/* Verdict Icon with glow */}
+                      <div className="relative">
+                        <div
+                          className={`absolute inset-0 rounded-full blur-2xl ${
+                            isAI ? "bg-red-500/40" : "bg-green-500/40"
+                          }`}
+                        />
+                        {isAI ? (
+                          <XCircle className="relative w-20 h-20 text-red-500" />
+                        ) : (
+                          <CheckCircle className="relative w-20 h-20 text-green-500" />
+                        )}
+                      </div>
+                    </div>
+
+                    <p className={`text-4xl md:text-5xl font-bold mb-2 ${verdictColor}`}>
+                      {verdictText}
+                    </p>
+                    <p className="text-sm text-gray-400">
+                      {confidenceLevel} Confidence
+                    </p>
+                  </div>
                 </div>
+
+                {/* Score Details */}
+                <div className="mt-8 p-6 bg-white/5 rounded-2xl border border-white/10">
+                  <div className="flex items-start gap-4">
+                    <AlertCircle className="w-6 h-6 text-purple-400 mt-1 flex-shrink-0" />
+                    <div className="flex-1">
+                      <p className="text-xl font-bold text-white mb-2">
+                        Overall Score: {confidence.toFixed(1)}%
+                      </p>
+                      <p className="text-sm text-gray-400">
+                        Video score: {(analysisResults.video_score * 100).toFixed(1)}%
+                        (threshold: {(analysisResults.threshold_used * 100).toFixed(1)}%,
+                        hits: {analysisResults.k_hits}/{analysisResults.k_required})
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Debug Data - Collapsed */}
+                <details className="mt-6 group">
+                  <summary className="cursor-pointer text-sm font-medium text-gray-400 hover:text-white transition-colors list-none">
+                    <span className="flex items-center gap-2">
+                      <span className="group-open:rotate-90 transition-transform">▶</span>
+                      Show Raw Analysis Data (Debug)
+                    </span>
+                  </summary>
+                  <pre className="mt-4 p-4 bg-black/30 rounded-xl text-xs overflow-auto max-h-96 text-gray-300">
+                    {JSON.stringify(analysisResults, null, 2)}
+                  </pre>
+                </details>
               </div>
-
-              {/* Enforced verdict text */}
-              <p className={`text-3xl font-bold ${verdictColor}`}>
-                {verdictText}
-              </p>
-
-              <p className="text-sm text-muted-foreground mt-1">
-                {confidenceLevel} Confidence
-              </p>
             </div>
-          </div>
 
-          <div className="mt-6 p-4 bg-secondary/50 rounded-lg border border-border">
-            <div className="flex items-start gap-3">
-              <AlertCircle className="w-5 h-5 text-accent mt-0.5 flex-shrink-0" />
-              <div>
-                <p className="font-medium mb-1">Overall Score: {confidence.toFixed(1)}%</p>
-                <p className="text-sm text-muted-foreground">
-                  Video score: {(analysisResults.video_score * 100).toFixed(1)}%
-                  (threshold: {(analysisResults.threshold_used * 100).toFixed(1)}%,
-                  hits: {analysisResults.k_hits}/{analysisResults.k_required})
+            {/* Detection Metrics Section */}
+            <div className="space-y-8">
+              <div className="text-center">
+                <h2 className="text-4xl md:text-5xl font-bold mb-4 bg-gradient-to-r from-white to-gray-400 bg-clip-text text-transparent">
+                  Detection Metrics
+                </h2>
+                <p className="text-lg text-gray-400 max-w-2xl mx-auto">
+                  Five powerful algorithms working in harmony to expose the truth
                 </p>
               </div>
+
+              {/* Metrics Grid */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {metrics.map((metric, index) => (
+                  <div
+                    key={metric.name}
+                    className="group relative p-8 rounded-3xl bg-white/5 backdrop-blur-xl border border-white/10 hover:bg-white/10 transition-all duration-500 hover:scale-105 hover:-translate-y-2"
+                    style={{
+                      animationDelay: `${index * 0.1}s`,
+                    }}
+                  >
+                    <div className={`absolute inset-0 rounded-3xl bg-gradient-to-br ${metric.color} opacity-0 group-hover:opacity-10 transition-opacity duration-500`} />
+
+                    {/* Metric Header with Tooltip */}
+                    <div className="flex items-start justify-between mb-6">
+                      <h3 className="text-xl font-bold text-white pr-2">{metric.name}</h3>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <button className="text-gray-400 hover:text-white transition-colors">
+                            <HelpCircle className="w-5 h-5" />
+                          </button>
+                        </TooltipTrigger>
+                        <TooltipContent className="max-w-xs bg-black/90 border-white/20 text-white">
+                          <p className="text-sm">{metricDescriptions[metric.name as keyof typeof metricDescriptions]}</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </div>
+
+                    {/* Metric Value */}
+                    <div className="mb-4">
+                      <div className="text-3xl font-bold bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">
+                        {metric.value}
+                      </div>
+                      <div className="text-sm text-gray-400 mt-1">
+                        AI Detection Score
+                      </div>
+                    </div>
+
+                    {/* Progress Bar */}
+                    <div className="h-2 bg-white/5 rounded-full overflow-hidden">
+                      <div
+                        className={`h-full bg-gradient-to-r ${metric.color} rounded-full transition-all duration-1000 group-hover:w-full`}
+                        style={{ width: `${metric.score}%` }}
+                      />
+                    </div>
+
+                    {/* Score Percentage */}
+                    <div className="mt-3 text-right">
+                      <span className="text-sm font-semibold text-gray-400">
+                        {metric.score.toFixed(1)}%
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Action Button */}
+            <div className="flex justify-center pt-8">
+              <Button
+                size="lg"
+                onClick={() => {
+                  sessionStorage.removeItem("analysisResults");
+                  sessionStorage.removeItem("uploadedVideo");
+                  navigate("/");
+                }}
+                className="relative bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white px-8 py-6 text-lg rounded-2xl transition-all duration-300 hover:scale-105 hover:shadow-[0_0_40px_rgba(168,85,247,0.4)]"
+              >
+                Analyze Another Video
+              </Button>
             </div>
           </div>
-
-          {/* Debug: Raw Results */}
-          <details className="mt-6">
-            <summary className="cursor-pointer text-sm font-medium text-muted-foreground hover:text-foreground">
-              Show Raw Analysis Data (Debug)
-            </summary>
-            <pre className="mt-2 p-4 bg-secondary/30 rounded text-xs overflow-auto max-h-96">
-              {JSON.stringify(analysisResults, null, 2)}
-            </pre>
-          </details>
-        </Card>
-
-        {/* Metrics Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {metrics.map((metric) => (
-            <MetricCard key={metric.name} {...metric} />
-          ))}
-        </div>
-
-        {/* Actions */}
-        <div className="flex justify-center gap-4 pt-8">
-          <Button
-            variant="outline"
-            size="lg"
-            onClick={() => {
-              sessionStorage.removeItem("analysisResults");
-              sessionStorage.removeItem("uploadedVideo");
-              navigate("/");
-            }}
-            className="cosmic-border hover:shadow-[var(--glow-accent)] transition-all"
-          >
-            Analyze Another Video
-          </Button>
         </div>
       </div>
-    </div>
+    </TooltipProvider>
   );
 };
 
