@@ -20,8 +20,6 @@ export const SpaceshipJourney = ({ analysisComplete = false, onProgressComplete 
   const [currentPlanet, setCurrentPlanet] = useState(0);
   const [waitingForAnalysis, setWaitingForAnalysis] = useState(false);
 
-  // flashing frame overlay (kept from your original)
-  const [showFrame, setShowFrame] = useState(false);
 
   const wrapRef = useRef<HTMLDivElement | null>(null);
   // refs to avoid restarting the animation loop when props/state change
@@ -111,15 +109,6 @@ export const SpaceshipJourney = ({ analysisComplete = false, onProgressComplete 
     };
   }, [totalMs, freezePoint]); // constants; effect effectively runs once
 
-  // flashing preview every 2s (unchanged)
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setShowFrame(true);
-      const off = setTimeout(() => setShowFrame(false), 800);
-      return () => clearTimeout(off);
-    }, 2000);
-    return () => clearInterval(interval);
-  }, []);
 
   // kept in case you want it later; unused now
   useMemo(() => Math.floor(progress * planets.length), [progress]);
@@ -208,16 +197,6 @@ export const SpaceshipJourney = ({ analysisComplete = false, onProgressComplete 
         </div>
       </div>
 
-      {/* --- Flashing frame preview overlay (unchanged) --- */}
-      {showFrame && (
-        <div className="fixed inset-0 z-30 flex items-center justify-center pointer-events-none">
-          <div className="w-96 h-64 bg-card border-2 border-destructive rounded-lg animate-pulse-glow">
-            <div className="w-full h-full flex items-center justify-center text-destructive font-bold">
-              SUSPICIOUS FRAME DETECTED
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 };
